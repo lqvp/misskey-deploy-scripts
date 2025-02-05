@@ -13,5 +13,5 @@ readonly BRANCH="develop"
 
 mkdir -p "$LOG_DIR"
 
-source ./scripts/deploy_functions.sh
+source ./deploy_functions.sh
 deploy "$BRANCH"
