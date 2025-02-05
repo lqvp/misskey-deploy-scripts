@@ -1,17 +1,7 @@
 #!/bin/bash
 
-set -euo pipefail
+# プロジェクトルートに移動
+cd "$(dirname "$0")/.."
 
-source ./scripts/config.sh
-
-readonly REPO_DIR="/home/misskey/misskey"
-readonly LOG_DIR="./logs/misskey"
-readonly LOG_FILE="$LOG_DIR/misskey-deploy.log"
-readonly DISCORD_WEBHOOK_URL="YOUR_DISCORD_WEBHOOK_URL"
-readonly REPO_URL="https://github.com/misskey-dev/misskey"
-readonly BRANCH="develop"
-
-mkdir -p "$LOG_DIR"
-
-source ./deploy_functions.sh
-deploy "$BRANCH"
+# メインスクリプト実行
+bash scripts/deploy.sh misskey

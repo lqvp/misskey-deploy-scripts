@@ -70,16 +70,16 @@ send_discord_notification() {
             "$DISCORD_WEBHOOK_URL")
 
         if [[ "$response" == "204" ]]; then
-            info "Discord notification sent successfully"
+            info "Discord通知が送信されました"
             return 0
         fi
 
-        warn "Discord notification failed (attempt $attempt/$max_retries) with status $response"
+        warn "Discord通知失敗 (試行 $attempt/$max_retries) ステータス: $response"
         ((attempt++))
         sleep "$retry_delay"
     done
 
-    error "Failed to send Discord notification after $max_retries attempts"
+    error "Discord通知を$max_retries回試行しましたが失敗しました"
     return 1
 }
 
@@ -87,30 +87,30 @@ handle_error() {
     local error_message="$1"
     error "$error_message"
     send_discord_notification "$STATUS_ERROR" \
-        "An error occurred" \
+        "エラーが発生しました" \
         "$DISCORD_COLOR_ERROR" \
-        "**Error Details:**\n\`\`\`\n$error_message\n\`\`\`" || true
+        "**エラー詳細:**\n\`\`\`\n$error_message\n\`\`\`" || true
     exit 1
 }
 
 deploy() {
     local branch="$1"
 
-    cd "$REPO_DIR" || handle_error "Repository directory not found: $REPO_DIR"
+    cd "$REPO_DIR" || handle_error "リポジトリディレクトリが見つかりません: $REPO_DIR"
 
-    info "Starting deployment process for branch: $branch"
+    info "ブランチ $branch のデプロイを開始します"
 
     local current_hash
     current_hash=$($GIT rev-parse HEAD)
 
-    info "Checking for updates on branch: $branch..."
+    info "ブランチ $branch の更新を確認中..."
     $GIT fetch origin "$branch"
 
     local remote_hash
     remote_hash=$($GIT rev-parse "origin/$branch")
 
     if [[ "$current_hash" == "$remote_hash" ]]; then
-        info "No updates found"
+        info "更新はありません"
         return 0
     fi
 
@@ -119,30 +119,30 @@ deploy() {
     commit_author=$($GIT log --format=%an -n 1 "$remote_hash")
     commit_link="${REPO_URL}/commit/${remote_hash}"
 
-    local update_details="**Commit Info:**
+    local update_details="**コミット情報:**
 🔗 [${remote_hash:0:7}]($commit_link)
-👤 Author: $commit_author
-📝 Message: $commit_message"
+👤 作者: $commit_author
+📝 メッセージ: $commit_message"
 
     send_discord_notification "$STATUS_WARNING" \
-        "Updates detected" \
+        "更新を検出しました" \
         "$DISCORD_COLOR_WARNING" \
         "$update_details"
 
-    info "Pulling updates from branch: $branch..."
+    info "ブランチ $branch から更新を取得中..."
     $GIT pull origin "$branch"
 
-    info "Building and starting Docker containers..."
-    if docker compose up -d --build; then
-        local deploy_details="**Deployment Info:**
-🔗 [${remote_hash:0:7}]($commit_link) deployed successfully
-🐳 Docker containers built and started"
+    info "Dockerコンテナのビルドと起動..."
+    if $DOCKER compose up -d --build; then
+        local deploy_details="**デプロイ情報:**
+🔗 [${remote_hash:0:7}]($commit_link) をデプロイしました
+🐳 Dockerコンテナがビルドされ起動しました"
 
         send_discord_notification "$STATUS_SUCCESS" \
-            "Deployment completed 🎉" \
+            "デプロイ完了 🎉" \
             "$DISCORD_COLOR_SUCCESS" \
             "$deploy_details"
     else
-        handle_error "Docker compose failed to build or start containers"
+        handle_error "Docker composeの実行に失敗しました"
     fi
 }
