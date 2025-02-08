@@ -83,12 +83,72 @@ send_discord_notification() {
     return 1
 }
 
+send_misskey_notification() {
+    local status_symbol="$1"
+    local message="$2"
+    local details="$3"
+
+    [[ "$USE_MISSKEY_NOTIFICATION" != "true" ]] && return 0
+    [[ -z "$MISSKEY_HOST" || -z "$MISSKEY_TOKEN" ]] && {
+        warn "Misskey通知が無効または設定不備のためスキップ"
+        return 0
+    }
+
+    local text="${status_symbol} **Deployment Notification**
+${message}
+
+${details}"
+
+    local payload
+    payload=$(jq -n \
+        --arg text "$text" \
+        --arg visibility "$MISSKEY_VISIBILITY" \
+        --arg localOnly "$MISSKEY_LOCAL_ONLY" \
+        --arg i "$MISSKEY_TOKEN" \
+        '{
+            text: $text,
+            visibility: $visibility,
+            localOnly: ($localOnly == "true"),
+            i: $i
+        }') || {
+            error "Misskeyペイロード生成失敗"
+            return 1
+        }
+
+    local max_retries=3 retry_delay=5 attempt=1 success=0
+    while ((attempt <= max_retries)); do
+        local response
+        response=$($CURL -X POST \
+            -H "Content-Type: application/json" \
+            -d "$payload" \
+            -w "%{http_code}" \
+            -s -o /dev/null \
+            "${MISSKEY_HOST}/api/notes/create")
+
+        if [[ "$response" == "200" ]]; then
+            info "Misskey通知成功"
+            success=1
+            break
+        else
+            warn "Misskey通知失敗 (試行 ${attempt}/${max_retries}) ステータス: ${response}"
+            sleep "$retry_delay"
+            ((attempt++))
+        fi
+    done
+
+    ((success == 0)) && error "Misskey通知が${max_retries}回連続で失敗"
+    return $((success == 0 ? 1 : 0))
+}
+
 handle_error() {
     local error_message="$1"
     error "$error_message"
     send_discord_notification "$STATUS_ERROR" \
         "エラーが発生しました" \
         "$DISCORD_COLOR_ERROR" \
+        "**エラー詳細:**\n\`\`\`\n$error_message\n\`\`\`" || true
+     send_misskey_notification "$STATUS_ERROR" \
+        "エラーが発生しました" \
         "**エラー詳細:**\n\`\`\`\n$error_message\n\`\`\`" || true
     exit 1
 }
@@ -128,6 +188,9 @@ deploy() {
         "更新を検出しました" \
         "$DISCORD_COLOR_WARNING" \
         "$update_details"
+    send_misskey_notification "$STATUS_WARNING" \
+        "更新を検出しました" \
+        "$update_details" || true
 
     info "ブランチ $branch から更新を取得中..."
     $GIT pull origin "$branch"
@@ -141,6 +204,9 @@ deploy() {
         send_discord_notification "$STATUS_SUCCESS" \
             "デプロイ完了 🎉" \
             "$DISCORD_COLOR_SUCCESS" \
+            "$deploy_details"
+        send_misskey_notification "$STATUS_SUCCESS" \
+            "デプロイ完了 🎉" \
             "$deploy_details"
     else
         handle_error "Docker composeの実行に失敗しました"
