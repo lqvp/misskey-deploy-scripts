@@ -174,12 +174,16 @@ deploy() {
         return 0
     fi
 
-    local commit_message commit_author commit_link
+    local commit_message commit_author commit_link repo_name
     commit_message=$($GIT log --format=%B -n 1 "$remote_hash")
     commit_author=$($GIT log --format=%an -n 1 "$remote_hash")
     commit_link="${REPO_URL}/commit/${remote_hash}"
 
+    # リポジトリ名を抽出 (例: https://github.com/misskey-dev/misskey -> misskey-dev/misskey)
+    repo_name=$(echo "$REPO_URL" | sed -E 's|https?://github.com/||' | sed -E 's|\.git$||')
+
     local update_details="**コミット情報:**
+📦 リポジトリ: $repo_name
 🔗 [${remote_hash:0:7}]($commit_link)
 👤 作者: $commit_author
 📝 メッセージ: $commit_message"
@@ -198,6 +202,7 @@ deploy() {
     info "Dockerコンテナのビルドと起動..."
     if $DOCKER compose up -d --build; then
         local deploy_details="**デプロイ情報:**
+📦 リポジトリ: $repo_name
 🔗 [${remote_hash:0:7}]($commit_link) をデプロイしました
 🐳 Dockerコンテナがビルドされ起動しました"
 
