@@ -1,11 +1,14 @@
 #!/bin/bash
 
 # shellcheck source=../config_parser.sh
-source "$(dirname "$0")/../config_parser.sh"
+SCRIPT_DIR_LIB=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+
+# shellcheck source=../config_parser.sh
+source "$SCRIPT_DIR_LIB/../config_parser.sh"
 # shellcheck source=./logging.sh
-source "$(dirname "$0")/logging.sh"
+source "$SCRIPT_DIR_LIB/logging.sh"
 # shellcheck source=./notifications.sh
-source "$(dirname "$0")/notifications.sh"
+source "$SCRIPT_DIR_LIB/notifications.sh"
 
 perform_health_check() {
     info "ヘルスチェックを開始します..."
