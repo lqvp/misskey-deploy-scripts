@@ -120,18 +120,12 @@ send_misskey_notification() {
     local message_escaped_for_echo_e="${original_message//\\\\n/\\n}" # \\n を \n に置換
     processed_message=$(echo -e "$message_escaped_for_echo_e")
 
-    local processed_details
-    local details_escaped_for_echo_e="${original_details//\\\\n/\\n}" # \\n を \n に置換
-    processed_details=$(echo -e "$details_escaped_for_echo_e")
+    # 詳細メッセージの \n は jq が処理するので echo -e は不要
+    # バッククォートのエスケープも不要 (details は既にMisskey Markdown形式であることを期待)
 
-    # Escape backticks in the PROCESSED details for Markdown
-    local escaped_processed_details_for_md="${processed_details//\`/\\\`}"
-
-    # Construct text_content using PROCESSED message and PROCESSED+escaped details
-    # The \n here are for shell to create newlines in the variable.
     local text_content="${status_symbol} **Deployment Notification (${INSTANCE_NAME})**\n${processed_message}"
-    if [[ -n "$escaped_processed_details_for_md" ]]; then
-        text_content="${text_content}\n\n${escaped_processed_details_for_md}"
+    if [[ -n "$original_details" ]]; then
+        text_content="${text_content}\n\n${original_details}"
     fi
 
 

@@ -57,7 +57,7 @@ apply_deploy_filters() {
         for file in "${changed_files[@]}"; do
             local matched_include=false
             for pattern in "${EFFECTIVE_INCLUDE_PATHS[@]}"; do
-                if [[ "$file" == $pattern* || "$file" == $pattern ]]; then
+                if [[ "$file" == "$pattern"* || "$file" == "$pattern" ]]; then
                     matched_include=true
                     break
                 fi
@@ -75,7 +75,7 @@ apply_deploy_filters() {
         for file in "${files_after_include_filter[@]}"; do
             local matched_exclude=false
             for pattern in "${INSTANCE_EXCLUDE_PATHS[@]}"; do
-                if [[ "$file" == $pattern* || "$file" == $pattern ]]; then # 前方一致も考慮
+                if [[ "$file" == "$pattern"* || "$file" == "$pattern" ]]; then # 前方一致も考慮
                     matched_exclude=true
                     break
                 fi
@@ -93,7 +93,7 @@ apply_deploy_filters() {
         for file in "${files_after_instance_exclude[@]}"; do
             local matched_exclude=false
             for pattern in "${GLOBAL_EXCLUDE_PATHS[@]}"; do
-                if [[ "$file" == $pattern* || "$file" == $pattern ]]; then # 前方一致も考慮
+                if [[ "$file" == "$pattern"* || "$file" == "$pattern" ]]; then # 前方一致も考慮
                     matched_exclude=true
                     break
                 fi

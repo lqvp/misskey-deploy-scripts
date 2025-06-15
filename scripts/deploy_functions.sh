@@ -70,33 +70,53 @@ deploy() {
 
     if ((${#final_files_to_deploy[@]} == 0)); then
         info "フィルタリングの結果、デプロイ対象のファイルがありません。スキップします。"
-        local skip_details
         local max_files_to_show=3 # 表示する最大ファイル数を定義
-        local changed_files_summary
-        local num_changed_files=${#changed_files[@]} # changed_files_rawではなく配列の要素数を使用
+        local num_changed_files=${#changed_files[@]}
 
+        # Discord用メッセージ詳細
+        local changed_files_summary_discord
         if ((num_changed_files > max_files_to_show)); then
-            # changed_files配列から先頭max_files_to_show件を取得
-            local first_files_output=""
+            local first_files_output_discord=""
             for i in $(seq 0 $((max_files_to_show - 1)) ); do
-                first_files_output+="${changed_files[$i]}\n"
+                first_files_output_discord+="${changed_files[$i]}"$'\n' # Discordは実際の改行
             done
-            changed_files_summary="${first_files_output}...他 ${num_changed_files} 件中 $((num_changed_files - max_files_to_show)) 件のファイルがあります。"
+            changed_files_summary_discord="${first_files_output_discord}...他 ${num_changed_files} 件中 $((num_changed_files - max_files_to_show)) 件のファイルがあります。"
         else
-            changed_files_summary="${changed_files_raw}" # 全てのファイルを表示
+            changed_files_summary_discord="${changed_files_raw}" # 全てのファイルを表示 (元々改行区切り)
         fi
+        local skip_details_discord="**検知された変更ファイル ($original_changed_files_count 件):**\n\`\`\`\n${changed_files_summary_discord}\n\`\`\`\n\n"
+        skip_details_discord+="**結果:** デプロイ対象ファイルが0件のため、処理をスキップしました。"
 
-        skip_details="**検知された変更ファイル ($original_changed_files_count 件):**\n\`\`\`\n${changed_files_summary}\n\`\`\`\n\n"
-        # skip_details+="${filter_log_details}\n" # filter_log_detailsは長すぎるためDiscord通知からは除外。詳細はサーバーログを確認。
-        skip_details+="**結果:** デプロイ対象ファイルが0件のため、処理をスキップしました。"
+        # Misskey用メッセージ詳細
+        local changed_files_summary_misskey
+        if ((num_changed_files > max_files_to_show)); then
+            local first_files_output_misskey=""
+            for i in $(seq 0 $((max_files_to_show - 1)) ); do
+                first_files_output_misskey+="${changed_files[$i]}"$'\n' # Misskeyもシェル内では実際の改行
+            done
+            # Misskeyのコードブロック内では、シェル変数の改行がそのまま表示される
+            changed_files_summary_misskey="検知された変更ファイル (${num_changed_files} 件):
+\`\`\`
+${first_files_output_misskey}...他 ${num_changed_files} 件中 $((num_changed_files - max_files_to_show)) 件のファイルがあります。
+\`\`\`"
+        else
+            # Misskeyのコードブロック内では、シェル変数の改行がそのまま表示される
+            changed_files_summary_misskey="検知された変更ファイル (${num_changed_files} 件):
+\`\`\`
+${changed_files_raw}
+\`\`\`"
+        fi
+        local skip_details_misskey="結果: デプロイ対象ファイルが0件のため、処理をスキップしました。
+
+${changed_files_summary_misskey}" # Misskey用に整形
 
         send_discord_notification "$STATUS_WARNING" \
             "デプロイ スキップ (フィルター)" \
             "$DISCORD_COLOR_WARNING" \
-            "$skip_details"
+            "$skip_details_discord"
         send_misskey_notification "$STATUS_WARNING" \
             "デプロイ スキップ (フィルター)" \
-            "$skip_details"
+            "$skip_details_misskey"
         return 0
     fi
 
@@ -151,39 +171,70 @@ ${files_to_deploy_str}
     if docker_compose_build_and_up_detached; then
         info "Dockerコンテナのビルドと起動が正常に完了しました。 (deploy_functions.sh)"
         
-        # 通知用のファイルリスト文字列を作成
-        local files_to_deploy_str="変更なし"
+        # Discord用ファイルリスト文字列
+        local files_to_deploy_str_discord="変更なし"
         if [[ ${#final_files_to_deploy[@]} -gt 0 ]]; then
-            files_to_deploy_str=$(printf -- '- %s\n' "${final_files_to_deploy[@]}" | sed '$ s/\\n$//') # 最後の改行を削除
+            files_to_deploy_str_discord=""
+            for file_path_discord in "${final_files_to_deploy[@]}"; do
+                files_to_deploy_str_discord+="- ${file_path_discord}"$'\n' # Discordは実際の改行
+            done
+            files_to_deploy_str_discord=${files_to_deploy_str_discord%$'\n'} # 末尾の改行を削除
         fi
 
-        # コミットリンクの取得 (config_parser.sh に get_repository_url 関数があると仮定)
+        # Misskey用ファイルリスト文字列
+        local files_to_deploy_str_misskey="変更なし"
+        if [[ ${#final_files_to_deploy[@]} -gt 0 ]]; then
+            files_to_deploy_str_misskey=""
+            for file_path_misskey in "${final_files_to_deploy[@]}"; do
+                files_to_deploy_str_misskey+="- ${file_path_misskey}"$'\n' # Misskeyもシェル内では実際の改行
+            done
+            files_to_deploy_str_misskey=${files_to_deploy_str_misskey%$'\n'} # 末尾の改行を削除
+        fi
+
+        # コミットリンクの取得
         local repo_url
-        repo_url=$(get_config_value ".repository.url" "") # deploy_config.yaml から取得
-        local commit_link=""
+        repo_url=$(get_config_value ".repository.url" "")
+        local commit_link_markdown="" # Markdown形式のリンク
+        local commit_hash_plain="${remote_hash:-不明}" # ハッシュのみ
         if [[ -n "$repo_url" && -n "$remote_hash" ]]; then
-            # GitHubやGitLabなどの一般的なURL形式を想定
             if [[ "$repo_url" == *.git ]]; then
-                repo_url=${repo_url%.git} # 末尾の .git を削除
+                repo_url=${repo_url%.git}
             fi
-            commit_link="[$remote_hash]($repo_url/commit/$remote_hash)"
+            commit_link_markdown="[${remote_hash:0:7}](${repo_url}/commit/${remote_hash})"
         elif [[ -n "$remote_hash" ]]; then
-            commit_link="$remote_hash" # URLがなければハッシュのみ
+            commit_link_markdown="${remote_hash:0:7}" # URLがなければ短縮ハッシュ
         fi
         
-        local deploy_success_details
-        deploy_success_details="**デプロイ成功:**\n"
-        deploy_success_details+="インスタンス: $INSTANCE_NAME\n"
-        deploy_success_details+="ブランチ: $branch\n"
-        if [[ -n "$commit_link" ]]; then
-            deploy_success_details+="コミット: $commit_link\n"
+        # Discord用メッセージ詳細
+        local deploy_success_details_discord="**デプロイ成功:**\n"
+        deploy_success_details_discord+="インスタンス: $INSTANCE_NAME\n"
+        deploy_success_details_discord+="ブランチ: $branch\n"
+        if [[ -n "$commit_link_markdown" ]]; then
+            deploy_success_details_discord+="コミット: $commit_link_markdown\n"
+        else
+            deploy_success_details_discord+="コミット: $commit_hash_plain\n"
         fi
-        deploy_success_details+="変更ファイル数: ${#final_files_to_deploy[@]}\n"
-        deploy_success_details+="\n**デプロイ対象ファイル:**\n"
-        deploy_success_details+="\`\`\`\n${files_to_deploy_str}\n\`\`\`" # バッククォート3つで囲む
+        deploy_success_details_discord+="変更ファイル数: ${#final_files_to_deploy[@]}\n"
+        deploy_success_details_discord+="\n**デプロイ対象ファイル:**\n"
+        deploy_success_details_discord+="\`\`\`\n${files_to_deploy_str_discord}\n\`\`\`"
 
-        send_discord_notification "$STATUS_SUCCESS" "デプロイ完了 🎉" "$DISCORD_COLOR_SUCCESS" "$deploy_success_details"
-        send_misskey_notification "$STATUS_SUCCESS" "デプロイ完了 🎉" "$deploy_success_details"
+        # Misskey用メッセージ詳細
+        local deploy_success_details_misskey="**デプロイ成功:**
+インスタンス: $INSTANCE_NAME
+ブランチ: $branch" # シェル内での改行
+        if [[ -n "$commit_link_markdown" ]]; then
+            deploy_success_details_misskey+=$'\n'"コミット: $commit_link_markdown"
+        else
+            deploy_success_details_misskey+=$'\n'"コミット: $commit_hash_plain"
+        fi
+        deploy_success_details_misskey+=$'\n'"変更ファイル数: ${#final_files_to_deploy[@]}"
+        deploy_success_details_misskey+=$'\n\n'"**デプロイ対象ファイル:**
+\`\`\`
+${files_to_deploy_str_misskey}
+\`\`\`"
+
+        send_discord_notification "$STATUS_SUCCESS" "デプロイ完了 🎉" "$DISCORD_COLOR_SUCCESS" "$deploy_success_details_discord"
+        send_misskey_notification "$STATUS_SUCCESS" "デプロイ完了 🎉" "$deploy_success_details_misskey"
 
         # ヘルスチェックを実行
         perform_health_check
