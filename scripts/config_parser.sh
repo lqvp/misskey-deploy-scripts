@@ -188,6 +188,11 @@ get_config_array() {
     local key="${2:-}" # $2が未設定の場合、空文字列をkeyに設定
     local result
 
+    if [[ -z "$key" ]]; then
+        echo ""
+        return 0
+    fi
+
     result=$("$YQ_COMMAND" eval "$key | .[]" "$file_path")
     if [[ "$result" == "null" ]] || [[ -z "$result" ]]; then
         echo "" # 空を返す

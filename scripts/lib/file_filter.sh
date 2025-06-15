@@ -5,7 +5,7 @@ SCRIPT_DIR_LIB=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source "$SCRIPT_DIR_LIB/../config_parser.sh"
 
 # shellcheck source=./logging.sh
-source "$SCRIPT_DIR_LIB/logging.sh" # logging.sh を source する
+source "${SCRIPT_DIR_LIB}/logging.sh"
 
 # グローバル変数としてフィルター設定を保持
 declare -a GLOBAL_INCLUDE_PATHS

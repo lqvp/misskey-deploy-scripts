@@ -193,7 +193,7 @@ ${files_to_deploy_str}
 
         # コミットリンクの取得
         local repo_url
-        repo_url=$(get_config_value ".repository.url" "")
+        repo_url=$(get_config_value "$INSTANCE_NAME" ".repo_url" "")
         local commit_link_markdown="" # Markdown形式のリンク
         local commit_hash_plain="${remote_hash:-不明}" # ハッシュのみ
         if [[ -n "$repo_url" && -n "$remote_hash" ]]; then
