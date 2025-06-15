@@ -1,0 +1,92 @@
+name: Test Deployment Script
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # 手動実行を許可
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up yq
+        run: |
+          sudo wget https://github.com/mikefarah/yq/releases/download/v4.30.8/yq_linux_amd64 -O /usr/bin/yq
+          sudo chmod +x /usr/bin/yq
+          yq --version # 確認用
+
+      - name: Set up jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+        # jq --version # 確認用
+
+      - name: Install and run shellcheck
+        continue-on-error: true
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          echo "--- Running shellcheck ---"
+          find scripts -name '*.sh' -print0 | xargs -0 shellcheck -x
+          echo "--- Shellcheck finished ---"
+
+      - name: Create dummy repository and config for testing
+        run: |
+          # テスト用のダミーリポジトリディレクトリを作成
+          mkdir -p test_repo/dummy_app
+          cd test_repo
+          git init
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+          echo "initial content" > dummy_app/file1.txt
+          git add .
+          git commit -m "Initial commit"
+          cd ..
+
+          # 設定ファイルをサンプルからコピー
+          cp scripts/configs/deploy_config.yaml.example scripts/configs/deploy_config.yaml
+
+          # テスト用に設定ファイルを修正 (yqを使用)
+          # misskey_dev インスタンスの設定を更新 (単一コマンドに集約)
+          yq -i '
+            .instances[] |= select(.name == "misskey_dev") |
+            (
+              .repo_dir = strenv(PWD) + "/test_repo" |
+              .repo_url = "file:///" + strenv(PWD) + "/test_repo" |
+              .branch = "main" |
+              .discord_webhook_url = "" |
+              .misskey_notification.enabled = false
+            )
+          ' scripts/configs/deploy_config.yaml
+
+          # グローバル設定の通知も無効化
+          yq -i '.global_settings.discord_webhook_url = ""' scripts/configs/deploy_config.yaml
+          yq -i '.global_settings.misskey_notification.enabled = false' scripts/configs/deploy_config.yaml
+
+          echo "--- deploy_config.yaml for test ---"
+          cat scripts/configs/deploy_config.yaml
+          echo "-----------------------------------"
+
+      - name: Make scripts executable
+        run: |
+          chmod +x scripts/*.sh
+          chmod +x scripts/lib/*.sh
+
+      - name: Run deployment script for misskey_dev
+        run: |
+          bash scripts/deploy.sh misskey_dev
+
+      - name: Check logs (optional)
+        run: |
+          echo "--- Log file content ---"
+          if [ -f logs/misskey_dev/misskey_dev-deploy.log ]; then
+            cat logs/misskey_dev/misskey_dev-deploy.log
+          else
+            echo "Log file not found."
+          fi
+          echo "------------------------"
+          # ここでログの内容をgrepして特定の文字列があるか確認するなどのアサーションも可能

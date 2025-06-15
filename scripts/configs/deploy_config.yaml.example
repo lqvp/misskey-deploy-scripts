@@ -1,0 +1,112 @@
+# scripts/configs/deploy_config.yaml.example
+
+# グローバル設定
+global_settings:
+  # 全インスタンス共通のDiscord Webhook URL (各インスタンスで上書き可能)
+  # discord_webhook_url: "YOUR_GLOBAL_DISCORD_WEBHOOK_URL"
+
+  # 全インスタンス共通のMisskey通知設定 (各インスタンスで上書き可能)
+  # misskey_notification:
+  #   enabled: false
+  #   host: "https://misskey.example.com" # Misskeyインスタンスのホスト
+  #   token: "YOUR_MISSKEY_API_TOKEN"     # Misskey APIトークン
+  #   visibility: "public"                # ノートの公開範囲 (public, home, followers, specified)
+  #   local_only: false                   # ローカル限定にするか (true/false)
+
+  # 全インスタンス共通のデプロイフィルタ
+  deploy_filters:
+    include_paths: # このリスト内の変更があった場合のみデプロイを検討 (インスタンス設定で上書き可能)
+      - "packages/backend/src/"
+      - "packages/frontend/src/"
+      - "packages/frontend-shared/"
+      - "packages/shared/"
+      - "packages/misskey-js/src/"
+      - "pnpm-lock.yaml"
+      - "docker-compose.yml"
+      - ".github/workflows/"
+      - "scripts/"
+      - "chart/"
+    exclude_paths: # このリスト内のパスへの変更は常に無視 (インスタンス設定で追加可能)
+      - "*.md"
+      - "LICENSE"
+      - "docs/"
+      - ".vscode/"
+      - ".idea/"
+      - "*.log"
+      - "logs/"
+      - "packages/backend/test/"
+      - "packages/frontend/test/"
+      - "cypress/"
+
+  # ログローテーション設定 (グローバル)
+  # この設定は、各インスタンスのログファイル (${PROJECT_ROOT}/logs/${INSTANCE_NAME}/${INSTANCE_NAME}-deploy.log) に適用されます。
+  log_rotation:
+    enabled: true       # true にすると簡易ログローテーションを有効化
+    max_size_mb: 10     # ログファイルがこのサイズ (MB) を超えたらローテーション (0以下で無効)
+    max_files: 5        # 古いログファイルを保持する最大数 (1以上であること)
+
+# デプロイするMisskeyインスタンスのリスト
+instances:
+  - name: "misskey_live" # インスタンスの一意な名前 (本番環境など)
+    enabled: true
+    repo_dir: "/var/www/misskey_live_instance" # Misskey本番インスタンスのローカルリポジトリパス
+    repo_url: "https://github.com/misskey-dev/misskey.git"
+    branch: "master"
+
+    discord_webhook_url: "YOUR_LIVE_DISCORD_WEBHOOK_URL"
+
+    misskey_notification:
+      enabled: true
+      host: "https://live.misskey.example.com"
+      token: "YOUR_LIVE_MISSKEY_API_TOKEN"
+      visibility: "home"
+      local_only: false
+
+    deploy_filters:
+      exclude_paths: # Global excludes are also applied. Add instance-specific test folders here if needed.
+        - "packages/backend/test/"
+        - "packages/frontend/test/"
+        - "cypress/"
+
+    health_check:
+      enabled: true  # trueにするとヘルスチェックを実行
+      url: "https://live.misskey.example.com/.well-known/nodeinfo" # チェック対象のURL (インスタンスに合わせて変更してください)
+      timeout_seconds: 10 # curlのタイムアウト (秒)
+      retries: 3 # 失敗時のリトライ回数
+      retry_delay_seconds: 5 # リトライ間の待機時間 (秒)
+      expected_status_code: 200 # 期待するHTTPステータスコード
+      expected_response_contains: "" # (オプション) レスポンスボディにこの文字列が含まれていることを確認。空の場合はチェックしない。
+
+  - name: "misskey_dev"  # インスタンスの一意な名前 (開発/ステージング環境など)
+    enabled: true         # 必要に応じて false にして無効化も可能
+    repo_dir: "/var/www/misskey_dev_instance" # Misskey開発インスタンスのローカルリポジトリパス
+    repo_url: "https://github.com/misskey-dev/misskey.git" # フォークしたリポジトリでも可
+    branch: "develop"
+
+    discord_webhook_url: "YOUR_DEV_DISCORD_WEBHOOK_URL"
+
+    misskey_notification:
+      enabled: true # 開発環境でも通知が必要な場合
+      host: "https://dev.misskey.example.com"
+      token: "YOUR_DEV_MISSKEY_API_TOKEN"
+      visibility: "specified" # 関係者のみに通知する場合など
+      local_only: true        # ローカル限定通知
+
+    deploy_filters:
+      exclude_paths: # Global excludes are also applied. Add instance-specific test folders here if needed.
+        - "packages/backend/test/"
+        - "packages/frontend/test/"
+        - "cypress/"
+
+    health_check:
+      enabled: false # 開発環境ではデフォルト無効など、適宜変更
+      url: "https://dev.misskey.example.com/.well-known/nodeinfo" # チェック対象のURL (インスタンスに合わせて変更してください)
+      timeout_seconds: 10
+      retries: 2
+      retry_delay_seconds: 5
+      expected_status_code: 200
+      expected_response_contains: ""
+
+# 依存関係 (yqなど) のパス (オプション、システムパスにあれば不要)
+# command_paths:
+#   yq: "/usr/local/bin/yq"

@@ -2,32 +2,114 @@
 
 set -euo pipefail
 
-# 設定ファイル名の確認
+# スクリプトのディレクトリを取得
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+PROJECT_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+
+# 設定ファイル名の確認 (インスタンス名)
 if [ $# -ne 1 ]; then
-    echo "使用方法: $0 <設定名>"
+    echo "使用方法: $0 <インスタンス名>"
+    echo "利用可能なインスタンス名は deploy_config.yaml で定義されています。"
+    exit 1
+fi
+INSTANCE_NAME="$1"
+
+# --- 新しい設定システムの読み込み ---
+MAIN_CONFIG_FILE="$PROJECT_ROOT/scripts/configs/deploy_config.yaml" # YAML設定ファイル
+CONFIG_PARSER_SCRIPT="$SCRIPT_DIR/config_parser.sh"
+
+if [ ! -f "$MAIN_CONFIG_FILE" ]; then
+    echo "エラー: メイン設定ファイル $MAIN_CONFIG_FILE が見つかりません。"
+    echo "cp scripts/configs/deploy_config.yaml.example scripts/configs/deploy_config.yaml して設定してください。"
+    exit 1
+fi
+if [ ! -f "$CONFIG_PARSER_SCRIPT" ]; then
+    echo "エラー: 設定パーサースクリプト $CONFIG_PARSER_SCRIPT が見つかりません。"
+    exit 1
+fi
+# shellcheck source=scripts/config_parser.sh
+source "$CONFIG_PARSER_SCRIPT"
+
+# パーサー初期化 (yqコマンドのチェックなど)
+if ! initialize_parser; then
+    exit 1
+fi
+# --- ここまで新しい設定システムの読み込み ---
+
+# shellcheck source=./lib/logging.sh
+source "$SCRIPT_DIR/lib/logging.sh"
+
+# --- 既存のconfig.shとdeploy_functions.shの読み込み ---
+# config.sh は依存関係チェックのために読み込む。変数定義は新しい設定システムから行う。
+# shellcheck source=./config.sh
+source "$SCRIPT_DIR/config.sh" # GIT, DOCKER, CURL, STATUS_*, DISCORD_COLOR_* などが定義される
+# shellcheck source=./deploy_functions.sh
+source "$SCRIPT_DIR/deploy_functions.sh"
+# --- ここまで ---
+
+# --- インスタンス設定の取得 ---
+# enabled フラグを確認
+INSTANCE_ENABLED=$(get_instance_setting "$INSTANCE_NAME" ".enabled" "false")
+if [[ "$INSTANCE_ENABLED" != "true" ]]; then
+    echo "情報: インスタンス '$INSTANCE_NAME' は設定ファイルで無効化されています。処理をスキップします。"
+    exit 0
+fi
+
+REPO_DIR=$(get_instance_setting "$INSTANCE_NAME" ".repo_dir")
+REPO_URL=$(get_instance_setting "$INSTANCE_NAME" ".repo_url")
+BRANCH=$(get_instance_setting "$INSTANCE_NAME" ".branch")
+
+if [[ -z "$REPO_DIR" ]] || [[ -z "$REPO_URL" ]] || [[ -z "$BRANCH" ]]; then
+    error "インスタンス '$INSTANCE_NAME' の必須設定 (repo_dir, repo_url, branch) が不足しています。"
     exit 1
 fi
 
-CONFIG_NAME="$1"
-CONFIG_FILE="scripts/configs/${CONFIG_NAME}.conf"
+# Discord Webhook URL (インスタンス固有 -> グローバル -> なし)
+# shellcheck disable=SC2034
+DISCORD_WEBHOOK_URL=$(get_instance_or_global_setting "$INSTANCE_NAME" ".discord_webhook_url" ".discord_webhook_url")
 
-# 設定ファイルの存在確認
-if [ ! -f "$CONFIG_FILE" ]; then
-    echo "エラー: 設定ファイル $CONFIG_FILE が見つかりません"
-    exit 1
-fi
+# Misskey通知設定
+# shellcheck disable=SC2034
+USE_MISSKEY_NOTIFICATION=$(get_instance_or_global_setting "$INSTANCE_NAME" ".misskey_notification.enabled" ".misskey_notification.enabled" "false")
+# shellcheck disable=SC2034
+MISSKEY_HOST=$(get_instance_or_global_setting "$INSTANCE_NAME" ".misskey_notification.host" ".misskey_notification.host")
+# shellcheck disable=SC2034
+MISSKEY_TOKEN=$(get_instance_or_global_setting "$INSTANCE_NAME" ".misskey_notification.token" ".misskey_notification.token")
+# shellcheck disable=SC2034
+MISSKEY_VISIBILITY=$(get_instance_or_global_setting "$INSTANCE_NAME" ".misskey_notification.visibility" ".misskey_notification.visibility" "public")
+# shellcheck disable=SC2034
+MISSKEY_LOCAL_ONLY=$(get_instance_or_global_setting "$INSTANCE_NAME" ".misskey_notification.local_only" ".misskey_notification.local_only" "false")
 
-# 設定の読み込み
-source "$CONFIG_FILE"
-source "scripts/config.sh"
-source "scripts/deploy_functions.sh"
+# デプロイフィルタ (後ほど deploy_functions.sh で使用)
+GLOBAL_EXCLUDE_PATHS_RAW=$(get_global_array_setting ".deploy_filters.exclude_paths")
+INSTANCE_EXCLUDE_PATHS_RAW=$(get_instance_array_setting "$INSTANCE_NAME" ".deploy_filters.exclude_paths")
+INSTANCE_INCLUDE_PATHS_RAW=$(get_instance_array_setting "$INSTANCE_NAME" ".deploy_filters.include_paths")
 
-# ログ設定
-LOG_DIR="${PWD}/logs/${CONFIG_NAME}"
-LOG_FILE="${LOG_DIR}/${CONFIG_NAME}-deploy.log"
-mkdir -p "$LOG_DIR" || handle_error "Failed to create log directory: ${LOG_DIR}"
+# 配列に変換
+# shellcheck disable=SC2034
+readarray -t GLOBAL_EXCLUDE_PATHS <<< "$GLOBAL_EXCLUDE_PATHS_RAW"
+# shellcheck disable=SC2034
+readarray -t INSTANCE_EXCLUDE_PATHS <<< "$INSTANCE_EXCLUDE_PATHS_RAW"
+# shellcheck disable=SC2034
+readarray -t INSTANCE_INCLUDE_PATHS <<< "$INSTANCE_INCLUDE_PATHS_RAW"
+
+# --- ここまでインスタンス設定の取得 ---
+
+# ログ設定 (ログファイル名はインスタンス名ベースに変更)
+LOG_DIR="${PROJECT_ROOT}/logs/${INSTANCE_NAME}"
+# shellcheck disable=SC2034
+LOG_FILE="${LOG_DIR}/${INSTANCE_NAME}-deploy.log"
+mkdir -p "$LOG_DIR" || { echo "エラー: ログディレクトリの作成に失敗しました: ${LOG_DIR}"; exit 1; } # handle_error はまだ使えない可能性
+
+# インスタンス名 (大文字、環境変数用)
+# shellcheck disable=SC2034
+INSTANCE_NAME_UPPER=$(echo "$INSTANCE_NAME" | awk '{print toupper($0)}')
+
+# ログ関数内で使用される LOG_FILE をエクスポート (deploy_functions.sh で参照するため)
+# shellcheck disable=SC2034
+export LOG_FILE
 
 # デプロイ実行
-info "======= デプロイ開始: ${CONFIG_NAME} ======="
-deploy "$BRANCH"
-info "======= デプロイ完了: ${CONFIG_NAME} ======="
+info "======= デプロイ開始: ${INSTANCE_NAME} ======="
+deploy "$BRANCH" # deploy関数は deploy_functions.sh にある
+info "======= デプロイ完了: ${INSTANCE_NAME} ======="
