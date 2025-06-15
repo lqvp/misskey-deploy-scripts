@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # shellcheck source=../config_parser.sh
-source "$(dirname "$0")/../config_parser.sh" # SCRIPT_DIRからの相対パスを想定
+SCRIPT_DIR_LIB=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+source "$SCRIPT_DIR_LIB/../config_parser.sh"
 
 # apply_deploy_filters
 # Arguments:
