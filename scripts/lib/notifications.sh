@@ -103,8 +103,8 @@ send_discord_notification() {
 
 send_misskey_notification() {
     local status_symbol="$1"
-    local original_message="$2"
-    local original_details="$3"
+    local original_message="$2" # 例: "デプロイ完了 🎉"
+    local original_details="$3" # 例: "インスタンス: my-instance\nブランチ: main ..."
 
     if [[ "$USE_MISSKEY_NOTIFICATION" != "true" ]]; then
         debug "Misskey通知が無効です (${INSTANCE_NAME})。スキップします。"
@@ -115,19 +115,15 @@ send_misskey_notification() {
         return 0
     fi
 
-    # Process inputs to interpret \n etc.
-    local processed_message
-    local message_escaped_for_echo_e="${original_message//\\\\n/\\n}" # \\n を \n に置換
-    processed_message=$(echo -e "$message_escaped_for_echo_e")
+    # original_message は通常、単純な一行の文字列なので、特別な処理は不要。
+    # original_details は deploy_functions.sh で既に改行文字 ($'\n') を含んで渡されることを期待。
 
-    # 詳細メッセージの \n は jq が処理するので echo -e は不要
-    # バッククォートのエスケープも不要 (details は既にMisskey Markdown形式であることを期待)
+    local text_content="${status_symbol} **Deployment Notification (${INSTANCE_NAME})**"
+    text_content+=$'\n'"${original_message}" # ヘッダーとメッセージの間に改行
 
-    local text_content="${status_symbol} **Deployment Notification (${INSTANCE_NAME})**\n${processed_message}"
     if [[ -n "$original_details" ]]; then
-        text_content="${text_content}\n\n${original_details}"
+        text_content+=$'\n\n'"${original_details}" # メッセージと詳細の間に2つの改行
     fi
-
 
     local payload
     payload=$(jq -n \
@@ -153,7 +149,7 @@ send_misskey_notification() {
         response_code=$($CURL -X POST \
             -H "Content-Type: application/json" \
             -d "$payload" \
-            -w "%{http_code}" \
+            -w "%http_code" \
             -s -o /dev/null \
             "${MISSKEY_HOST}/api/notes/create")
 
