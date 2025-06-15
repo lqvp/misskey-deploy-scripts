@@ -37,7 +37,8 @@ send_discord_notification() {
     # Details内の \n を解釈し、jqに渡す際に適切に処理されるようにする
     local details_with_proper_newlines
     if [[ -n "$details" ]]; then
-        details_with_proper_newlines=$(echo -e "$details") # -e でエスケープシーケンスを解釈
+        local details_escaped_for_echo_e="${details//\\\\n/\\n}" # \\n を \n に置換
+        details_with_proper_newlines=$(echo -e "$details_escaped_for_echo_e") # -e でエスケープシーケンスを解釈
     fi
 
     if [[ -n "$details_with_proper_newlines" ]]; then
@@ -116,10 +117,12 @@ send_misskey_notification() {
 
     # Process inputs to interpret \n etc.
     local processed_message
-    processed_message=$(echo -e "$original_message")
+    local message_escaped_for_echo_e="${original_message//\\\\n/\\n}" # \\n を \n に置換
+    processed_message=$(echo -e "$message_escaped_for_echo_e")
 
     local processed_details
-    processed_details=$(echo -e "$original_details")
+    local details_escaped_for_echo_e="${original_details//\\\\n/\\n}" # \\n を \n に置換
+    processed_details=$(echo -e "$details_escaped_for_echo_e")
 
     # Escape backticks in the PROCESSED details for Markdown
     local escaped_processed_details_for_md="${processed_details//\`/\\\`}"
