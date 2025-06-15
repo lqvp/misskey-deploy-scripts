@@ -185,7 +185,7 @@ get_instance_or_global_setting() {
 # 返り値: 配列の各要素を改行区切りで出力
 get_config_array() {
     local file_path="$1"
-    local key="$2"
+    local key="${2:-}" # $2が未設定の場合、空文字列をkeyに設定
     local result
 
     result=$("$YQ_COMMAND" eval "$key | .[]" "$file_path")

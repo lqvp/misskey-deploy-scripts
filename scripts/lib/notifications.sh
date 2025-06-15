@@ -149,7 +149,7 @@ send_misskey_notification() {
         response_code=$($CURL -X POST \
             -H "Content-Type: application/json" \
             -d "$payload" \
-            -w "%http_code" \
+            -w "%{http_code}" \
             -s -o /dev/null \
             "${MISSKEY_HOST}/api/notes/create")
 
