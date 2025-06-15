@@ -3,7 +3,10 @@
 # Docker関連のユーティリティ関数群
 
 # shellcheck source=./logging.sh
-source "$(dirname "$0")/logging.sh"
+SCRIPT_DIR_LIB=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+
+# shellcheck source=./logging.sh
+source "$SCRIPT_DIR_LIB/logging.sh"
 
 # グローバル変数 DOCKER が呼び出し元で設定されていることを期待します。
 # また、このスクリプト内の関数が呼ばれる際には、
