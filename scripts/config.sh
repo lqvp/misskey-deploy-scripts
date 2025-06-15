@@ -8,25 +8,38 @@ readonly YQ="yq"
 readonly BC="bc"
 readonly JQ="jq"
 
-# ステータス表示
+# デフォルトのステータス表示用絵文字
 # shellcheck disable=SC2034
-readonly STATUS_SUCCESS="✅"
+readonly DEFAULT_STATUS_SUCCESS="✅"
 # shellcheck disable=SC2034
-readonly STATUS_ERROR="❌"
+readonly DEFAULT_STATUS_ERROR="❌"
 # shellcheck disable=SC2034
-readonly STATUS_WARNING="⚠️"
+readonly DEFAULT_STATUS_WARNING="⚠️"
 # shellcheck disable=SC2034
-readonly STATUS_INFO="ℹ️"
+readonly DEFAULT_STATUS_INFO="ℹ️"
 
-# Discordの色設定
+# スクリプト全体で使用される最終的なテーマ関連変数
+# これらは initialize_theme_settings() によって設定される
+STATUS_SUCCESS=""
+STATUS_ERROR=""
+STATUS_WARNING=""
+STATUS_INFO=""
+
+# デフォルトのDiscord通知用カラーコード
 # shellcheck disable=SC2034
-readonly DISCORD_COLOR_SUCCESS="3066993"
+readonly DEFAULT_DISCORD_COLOR_SUCCESS="3066993"
 # shellcheck disable=SC2034
-readonly DISCORD_COLOR_ERROR="15158332"
+readonly DEFAULT_DISCORD_COLOR_ERROR="15158332"
 # shellcheck disable=SC2034
-readonly DISCORD_COLOR_WARNING="15105570"
+readonly DEFAULT_DISCORD_COLOR_WARNING="15105570"
 # shellcheck disable=SC2034
-readonly DISCORD_COLOR_INFO="3447003" 
+readonly DEFAULT_DISCORD_COLOR_INFO="3447003"
+
+# スクリプト全体で使用される最終的なテーマ関連変数 (Discordカラー)
+DISCORD_COLOR_SUCCESS=""
+DISCORD_COLOR_ERROR=""
+DISCORD_COLOR_WARNING=""
+DISCORD_COLOR_INFO=""
 
 # 依存関係チェック関数
 check_dependency() {

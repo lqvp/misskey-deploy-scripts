@@ -42,7 +42,8 @@ source "$SCRIPT_DIR/lib/logging.sh"
 # --- 既存のconfig.shとdeploy_functions.shの読み込み ---
 # config.sh は依存関係チェックのために読み込む。変数定義は新しい設定システムから行う。
 # shellcheck source=./config.sh
-source "$SCRIPT_DIR/config.sh" # GIT, DOCKER, CURL, STATUS_*, DISCORD_COLOR_* などが定義される
+source "$SCRIPT_DIR/config.sh" # GIT, DOCKER, CURL, DEFAULT_STATUS_*, STATUS_*, DEFAULT_DISCORD_COLOR_*, DISCORD_COLOR_* などが定義される
+initialize_theme_settings # YAMLとデフォルト値を使ってテーマ変数を最終決定
 # shellcheck source=./deploy_functions.sh
 source "$SCRIPT_DIR/deploy_functions.sh"
 # --- ここまで ---

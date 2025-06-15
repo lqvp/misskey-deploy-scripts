@@ -14,6 +14,7 @@ Automated deployment scripts for Misskey instances, featuring multi-instance man
 -   **Comprehensive Logging**: Per-instance log files with timestamps (e.g., `logs/INSTANCE_NAME/INSTANCE_NAME-deploy.log`).
 -   **Dependency Checks**: Verifies required tools (`git`, `docker`, `curl`, `jq`, `yq`, `bc`) during initialization.
 -   **Misskey & Discord Notifications**: Real-time deployment status updates.
+-   **Theme Customization**: Customize notification emojis and Discord message colors via `deploy_config.yaml`.
 
 ## Directory Structure
 
@@ -69,6 +70,10 @@ misskey-deploy-scripts/
         *   `misskey_notification`: Default Misskey notification settings.
         *   `deploy_filters`: Global path exclusion rules.
         *   `log_rotation`: Settings for log rotation (`enabled`, `max_size_mb`, `max_files`).
+        *   `theme` (optional): Customize emojis and Discord notification colors.
+            *   `emojis`: Set `success`, `error`, `warning`, `info` emojis.
+            *   `discord_colors`: Set `success`, `error`, `warning`, `info` decimal color codes for Discord.
+            (See `deploy_config.yaml.example` for default values and structure.)
     *   `instances`: An array of Misskey instances. Each instance can have:
         *   `name`: A unique name for the instance (used for logging and identification).
         *   `enabled`: `true` or `false` to enable/disable deployment for this instance.

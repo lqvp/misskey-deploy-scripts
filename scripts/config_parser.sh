@@ -246,3 +246,53 @@ get_instance_array_setting() {
     fi
     get_config_array "$MAIN_CONFIG_FILE" ".instances[$instance_index]$yaml_key_suffix"
 }
+
+# -----------------------------------------------------------------------------
+# Function: initialize_theme_settings
+# Description:
+#   Loads theme settings (emojis, Discord colors) from the YAML configuration
+#   file. If a setting is not found in YAML, it uses the default value
+#   defined in config.sh (e.g., DEFAULT_STATUS_SUCCESS).
+#   This function should be called after config.sh and config_parser.sh
+#   have been sourced, and before these theme variables are used.
+# Globals:
+#   Reads:
+#     - DEFAULT_STATUS_SUCCESS, DEFAULT_STATUS_ERROR, ... (from config.sh)
+#     - DEFAULT_DISCORD_COLOR_SUCCESS, ... (from config.sh)
+#     - MAIN_CONFIG_FILE (path to deploy_config.yaml, used by get_config_value)
+#   Writes:
+#     - STATUS_SUCCESS, STATUS_ERROR, ...
+#     - DISCORD_COLOR_SUCCESS, DISCORD_COLOR_ERROR, ...
+# Usage:
+#   initialize_theme_settings
+# -----------------------------------------------------------------------------
+initialize_theme_settings() {
+    # Ensure config.sh defaults are available
+    # (This function assumes config.sh has been sourced)
+
+    info "テーマ設定を初期化しています..."
+
+    # Status Emojis
+    # These variables are expected to be declared in config.sh (e.g., STATUS_SUCCESS="")
+    STATUS_SUCCESS=$(get_config_value "$MAIN_CONFIG_FILE" ".global_settings.theme.emojis.success" "$DEFAULT_STATUS_SUCCESS")
+    STATUS_ERROR=$(get_config_value "$MAIN_CONFIG_FILE" ".global_settings.theme.emojis.error" "$DEFAULT_STATUS_ERROR")
+    STATUS_WARNING=$(get_config_value "$MAIN_CONFIG_FILE" ".global_settings.theme.emojis.warning" "$DEFAULT_STATUS_WARNING")
+    STATUS_INFO=$(get_config_value "$MAIN_CONFIG_FILE" ".global_settings.theme.emojis.info" "$DEFAULT_STATUS_INFO")
+
+    # Discord Notification Colors
+    # These variables are expected to be declared in config.sh (e.g., DISCORD_COLOR_SUCCESS="")
+    DISCORD_COLOR_SUCCESS=$(get_config_value "$MAIN_CONFIG_FILE" ".global_settings.theme.discord_colors.success" "$DEFAULT_DISCORD_COLOR_SUCCESS")
+    DISCORD_COLOR_ERROR=$(get_config_value "$MAIN_CONFIG_FILE" ".global_settings.theme.discord_colors.error" "$DEFAULT_DISCORD_COLOR_ERROR")
+    DISCORD_COLOR_WARNING=$(get_config_value "$MAIN_CONFIG_FILE" ".global_settings.theme.discord_colors.warning" "$DEFAULT_DISCORD_COLOR_WARNING")
+    DISCORD_COLOR_INFO=$(get_config_value "$MAIN_CONFIG_FILE" ".global_settings.theme.discord_colors.info" "$DEFAULT_DISCORD_COLOR_INFO")
+
+    debug "テーマ設定完了:"
+    debug "  STATUS_SUCCESS: $STATUS_SUCCESS"
+    debug "  STATUS_ERROR: $STATUS_ERROR"
+    debug "  STATUS_WARNING: $STATUS_WARNING"
+    debug "  STATUS_INFO: $STATUS_INFO"
+    debug "  DISCORD_COLOR_SUCCESS: $DISCORD_COLOR_SUCCESS"
+    debug "  DISCORD_COLOR_ERROR: $DISCORD_COLOR_ERROR"
+    debug "  DISCORD_COLOR_WARNING: $DISCORD_COLOR_WARNING"
+    debug "  DISCORD_COLOR_INFO: $DISCORD_COLOR_INFO"
+}
