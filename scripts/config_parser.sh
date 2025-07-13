@@ -194,7 +194,9 @@ get_config_array() {
         return 0
     fi
 
-    result=$("$YQ_COMMAND" "$key | .[]" "$file_path")
+    # キーが存在しない場合に 'null' が返されるとパイプ先の .[] でエラーになる。
+    # "($key // []) | .[]" を使うと、キーがnullの場合に空の配列 [] を返し、エラーを防ぐ。
+    result=$("$YQ_COMMAND" "($key // []) | .[]" "$file_path")
     if [[ "$result" == "null" ]] || [[ -z "$result" ]]; then
         echo "" # 空を返す
     else
