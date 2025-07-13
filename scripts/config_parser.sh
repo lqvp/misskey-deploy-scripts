@@ -58,8 +58,9 @@ get_config_value() {
         return 1
     fi
 
-    # yqで値を取得。nullや空文字の場合も考慮
-    value=$("$YQ_COMMAND" "$key" "$file_path")
+    # yqで値を取得。値からキャリッジリターン(\r)と前後の空白を削除
+    value=$("$YQ_COMMAND" --raw-output "$key" "$file_path" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+
 
     # yqの出力が 'null' 文字列または空の場合、値なしとみなす
     if [[ "$value" == "null" ]] || [[ -z "$value" ]]; then
