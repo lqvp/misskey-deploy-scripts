@@ -59,7 +59,7 @@ get_config_value() {
     fi
 
     # yqで値を取得。nullや空文字の場合も考慮
-    value=$("$YQ_COMMAND" eval "$key" "$file_path")
+    value=$("$YQ_COMMAND" "$key" "$file_path")
 
     # yqの出力が 'null' 文字列または空の場合、値なしとみなす
     if [[ "$value" == "null" ]] || [[ -z "$value" ]]; then
@@ -83,7 +83,7 @@ get_instance_index() {
     local instance_name="$2"
     local index
 
-    index=$("$YQ_COMMAND" eval '.instances | to_entries | .[] | select(.value.name == "'$instance_name'") | .key' "$file_path")
+    index=$("$YQ_COMMAND" '.instances | to_entries | .[] | select(.value.name == "'$instance_name'") | .key' "$file_path")
 
     if [[ "$index" == "null" ]] || [[ -z "$index" ]]; then
         echo "エラー: インスタンス '$instance_name' の設定が見つかりません。" >&2
@@ -193,7 +193,7 @@ get_config_array() {
         return 0
     fi
 
-    result=$("$YQ_COMMAND" eval "$key | .[]" "$file_path")
+    result=$("$YQ_COMMAND" "$key | .[]" "$file_path")
     if [[ "$result" == "null" ]] || [[ -z "$result" ]]; then
         echo "" # 空を返す
     else
