@@ -20,4 +20,11 @@ fi
 # cron など任意の cwd から実行できるようにモジュールを解決できる位置へ移動
 cd "$SCRIPT_DIR"
 
+# ユーザーが --config を明示指定した場合はそれを優先する
+for arg in "$@"; do
+    if [ "$arg" = "--config" ] || [ "${arg#--config=}" != "$arg" ]; then
+        exec "$PY" -m misskey_deploy "$@"
+    fi
+done
+
 exec "$PY" -m misskey_deploy "$@" --config "${DEPLOY_CONFIG:-$SCRIPT_DIR/configs/deploy_config.yaml}"

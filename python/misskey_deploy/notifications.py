@@ -1,4 +1,4 @@
-"""Discord / Misskey 通知とヘルスチェック。"""
+"""Discord / Misskey 通知。"""
 from __future__ import annotations
 
 import time
@@ -11,7 +11,8 @@ class Notifier:
 
     def __init__(self, discord_webhook_url: str, misskey_host: str, misskey_token: str,
                  misskey_visibility: str = "public", misskey_local_only: bool = False,
-                 instance_name: str = "", logger=None, timeout: int = 10):
+                 instance_name: str = "", logger=None, timeout: int = 10,
+                 session: requests.Session | None = None):
         self.discord_webhook_url = discord_webhook_url
         self.misskey_host = misskey_host.rstrip("/")
         self.misskey_token = misskey_token
@@ -20,6 +21,7 @@ class Notifier:
         self.instance_name = instance_name
         self.logger = logger
         self.timeout = timeout
+        self._session = session
 
     def _log(self, level: str, msg: str) -> None:
         if self.logger is not None:
@@ -27,9 +29,10 @@ class Notifier:
 
     def _post_with_retries(self, url: str, payload: dict, *, expected: int = 204,
                             max_retries: int = 3, retry_delay: int = 5) -> bool:
+        sess = self._session or requests
         for attempt in range(1, max_retries + 1):
             try:
-                response = requests.post(url, json=payload, timeout=self.timeout)
+                response = sess.post(url, json=payload, timeout=self.timeout)
                 if response.status_code == expected:
                     return True
                 self._log("warn", f"通知送信失敗 (試行 {attempt}/{max_retries}, HTTP {response.status_code}): {url}")
@@ -68,28 +71,3 @@ class Notifier:
         return self._post_with_retries(
             f"{self.misskey_host}/api/notes/create", payload, expected=200
         )
-
-
-def perform_health_check(url: str, timeout_seconds: int, expected_status: int,
-                         expected_contains: str = "", *, logger=None,
-                         retries: int = 0, retry_delay_seconds: int = 5) -> tuple[bool, str]:
-    """HTTPヘルスチェック。リトライ付きで実行し、(成功か, 詳細メッセージ) を返す。"""
-    for attempt in range(1, retries + 2):
-        try:
-            response = requests.get(url, timeout=timeout_seconds)
-            if response.status_code == expected_status:
-                if expected_contains and expected_contains not in response.text:
-                    if logger:
-                        logger.warn(f"ヘルスチェック失敗 (試行 {attempt}): レスポンス内容が一致しません。")
-                else:
-                    return True, str(response.status_code)
-            elif logger:
-                logger.warn(
-                    f"ヘルスチェック失敗 (試行 {attempt}): HTTP {response.status_code} (期待: {expected_status})"
-                )
-        except requests.RequestException as e:
-            if logger:
-                logger.warn(f"ヘルスチェック失敗 (試行 {attempt}): {e}")
-        if attempt <= retries:
-            time.sleep(retry_delay_seconds)
-    return False, ""

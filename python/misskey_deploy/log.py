@@ -25,7 +25,10 @@ class DeployLogger:
         self.logger = logging.getLogger(f"misskey_deploy.{instance_name}")
         self.logger.setLevel(level)
         self.logger.propagate = False
-        self.logger.handlers.clear()
+        # 既存ハンドラはファイルディスクリプタを閉じてから破棄する (毎分実行されるため)
+        for handler in list(self.logger.handlers):
+            handler.close()
+            self.logger.removeHandler(handler)
 
         log_file.parent.mkdir(parents=True, exist_ok=True)
         if rotation_enabled:

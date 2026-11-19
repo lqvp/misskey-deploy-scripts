@@ -63,6 +63,3 @@ def git_commit_info(runner: Runner, repo_dir: str, commit: str) -> tuple[str, st
     message, _, author = fmt.partition("---AUTHOR---\n")
     return message.strip(), author.strip()
 
-
-def docker_compose_up_build(runner: Runner, repo_dir: str) -> None:
-    runner.run(["docker", "compose", "up", "-d", "--build"], cwd=repo_dir)

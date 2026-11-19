@@ -46,6 +46,21 @@ class ConfigError(Exception):
     """設定ファイルの読み込み・検証エラー。"""
 
 
+def _to_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in ("true", "yes", "on", "1")
+    return bool(value)
+
+
+def _to_int(value: Any, context: str) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError) as e:
+        raise ConfigError(f"{context} は整数である必要があります (値: {value!r})") from e
+
+
 def _deep_merge(base: dict, override: dict) -> dict:
     """override の値で base を再帰的に上書きする。"""
     merged = copy.deepcopy(base)
@@ -57,7 +72,26 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return merged
 
 
-def _set_override(node: Any, tokens: list, value: Any) -> None:
+def _parse_env_value(raw: str, current: Any) -> Any:
+    """環境変数の文字列値を、既存値の型に合わせて変換する。
+
+    yaml.safe_load を使わない理由: 空文字が None、"no" が False、
+    "12.10" が float になる等の暗黙変換が発生するため。
+    """
+    if isinstance(current, bool):
+        return _to_bool(raw)
+    if isinstance(current, int):
+        return _to_int(raw, "環境変数オーバーライド値")
+    if isinstance(current, float):
+        try:
+            return float(raw)
+        except ValueError as e:
+            raise ConfigError(f"環境変数オーバーライド値は数値である必要があります (値: {raw!r})") from e
+    # str / None / 未知のキーはそのまま文字列として扱う
+    return raw
+
+
+def _set_override(node: Any, tokens: list, raw_value: str) -> None:
     """トークン列を既存キーに最長一致で辿り、葉に値をセットする。"""
     if not tokens:
         return
@@ -66,9 +100,8 @@ def _set_override(node: Any, tokens: list, value: Any) -> None:
         if index >= len(node):
             raise ConfigError(f"配列インデックスが範囲外です: {index}")
         if len(tokens) == 1:
-            node[index] = value
-            return
-        _set_override(node[index], tokens[1:], value)
+            raise ConfigError("配列要素そのものの上書きはサポートされていません (キーを指定してください)")
+        _set_override(node[index], tokens[1:], raw_value)
         return
     # 先頭から連続する文字列トークンに対し最長一致するキーを探す
     # (例: global_settings_log_rotation_max_size_mb
@@ -80,14 +113,32 @@ def _set_override(node: Any, tokens: list, value: Any) -> None:
         key = "_".join(tokens[:n])
         if isinstance(node, dict) and key in node:
             if n == len(tokens):
-                node[key] = value
+                node[key] = _parse_env_value(raw_value, node[key])
             else:
-                _set_override(node[key], tokens[n:], value)
+                _set_override(node[key], tokens[n:], raw_value)
             return
-    # 既存キーに一致しない場合はタイポの可能性が高いのでエラーにする
+    # 既存キーに一致しない場合は新規キーとして作成する
+    # (YAMLに未定義のセクションを環境変数で有効化するユースケースのため)
+    key = "_".join(tokens)
+    if isinstance(node, dict):
+        node[key] = _parse_env_value(raw_value, None)
+        return
     raise ConfigError(
         f"環境変数オーバーライドのパスが設定内のキーに一致しません: {'_'.join(map(str, tokens))}"
     )
+
+
+def _seed_known_sections(config: dict) -> None:
+    """環境変数オーバーライドが既知セクション内のキーを指せるよう、
+    YAMLに未定義の既知セクションを空 dict として用意する。"""
+    g = config.setdefault("global_settings", {})
+    if isinstance(g, dict):
+        for key in ("misskey_notification", "log_rotation", "theme", "deploy_filters"):
+            g.setdefault(key, {})
+    for inst in config.get("instances") or []:
+        if isinstance(inst, dict):
+            for key in ("health_check", "misskey_notification", "deploy_filters", "deploy_filter"):
+                inst.setdefault(key, {})
 
 
 def _apply_env_overrides(config: dict, env: dict[str, str] | None = None) -> dict:
@@ -98,6 +149,7 @@ def _apply_env_overrides(config: dict, env: dict[str, str] | None = None) -> dic
     インスタンス配列は _INDEX_<n>_ で指定する。
     """
     env = env if env is not None else os.environ
+    _seed_known_sections(config)
     for key, value in env.items():
         if not key.startswith("CONFIG_OVERRIDE_"):
             continue
@@ -114,16 +166,8 @@ def _apply_env_overrides(config: dict, env: dict[str, str] | None = None) -> dic
                 continue
             parsed.append(tokens[i].lower())
             i += 1
-        _set_override(config, parsed, yaml.safe_load(value))
+        _set_override(config, parsed, value)
     return config
-
-
-def _to_bool(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.strip().lower() == "true"
-    return bool(value)
 
 
 @dataclass
@@ -183,35 +227,52 @@ def _get_filters(raw: dict, key: str) -> list[str]:
     return list(section.get(key) or [])
 
 
-def _load_instance(raw: dict) -> InstanceConfig:
-    hc = {**DEFAULTS["health_check"], **(raw.get("health_check") or {})}
-    mn = {**DEFAULTS["misskey_notification"], **(raw.get("misskey_notification") or {})}
-    return InstanceConfig(
+def _parse_misskey_notification(raw: dict) -> MisskeyNotificationConfig:
+    mn = {**DEFAULTS["misskey_notification"], **(raw or {})}
+    return MisskeyNotificationConfig(
+        enabled=_to_bool(mn["enabled"]),
+        host=str(mn["host"]),
+        token=str(mn["token"]),
+        visibility=str(mn["visibility"]),
+        local_only=_to_bool(mn["local_only"]),
+    )
+
+
+def _parse_health_check(raw: dict) -> HealthCheckConfig:
+    hc = {**DEFAULTS["health_check"], **(raw or {})}
+    ctx = "health_check"
+    return HealthCheckConfig(
+        enabled=_to_bool(hc["enabled"]),
+        url=str(hc["url"]),
+        timeout_seconds=_to_int(hc["timeout_seconds"], f"{ctx}.timeout_seconds"),
+        retries=_to_int(hc["retries"], f"{ctx}.retries"),
+        retry_delay_seconds=_to_int(hc["retry_delay_seconds"], f"{ctx}.retry_delay_seconds"),
+        expected_status_code=_to_int(hc["expected_status_code"], f"{ctx}.expected_status_code"),
+        expected_response_contains=str(hc["expected_response_contains"]),
+    )
+
+
+def _load_instance(raw: dict, global_misskey: MisskeyNotificationConfig,
+                   global_discord_webhook: str) -> InstanceConfig:
+    """未設定項目はグローバル設定からのフォールバックを解決済みの状態で返す。"""
+    inst = InstanceConfig(
         name=str(raw["name"]),
         enabled=_to_bool(raw.get("enabled", True)),
         repo_dir=str(raw.get("repo_dir", "")),
         repo_url=str(raw.get("repo_url", "")),
         branch=str(raw.get("branch", "")),
-        discord_webhook_url=str(raw.get("discord_webhook_url", "")),
-        misskey_notification=MisskeyNotificationConfig(
-            enabled=_to_bool(mn["enabled"]),
-            host=str(mn["host"]),
-            token=str(mn["token"]),
-            visibility=str(mn["visibility"]),
-            local_only=_to_bool(mn["local_only"]),
-        ),
-        health_check=HealthCheckConfig(
-            enabled=_to_bool(hc["enabled"]),
-            url=str(hc["url"]),
-            timeout_seconds=int(hc["timeout_seconds"]),
-            retries=int(hc["retries"]),
-            retry_delay_seconds=int(hc["retry_delay_seconds"]),
-            expected_status_code=int(hc["expected_status_code"]),
-            expected_response_contains=str(hc["expected_response_contains"]),
-        ),
+        discord_webhook_url=str(raw.get("discord_webhook_url", "")) or global_discord_webhook,
+        misskey_notification=_parse_misskey_notification(raw.get("misskey_notification")),
+        health_check=_parse_health_check(raw.get("health_check")),
         include_paths=_get_filters(raw, "include_paths"),
         exclude_paths=_get_filters(raw, "exclude_paths"),
     )
+    mn = inst.misskey_notification
+    if not mn.host:
+        mn.host = global_misskey.host
+    if not mn.token:
+        mn.token = global_misskey.token
+    return inst
 
 
 def load_config(config_path: str | Path, env: dict[str, str] | None = None) -> AppConfig:
@@ -230,26 +291,26 @@ def load_config(config_path: str | Path, env: dict[str, str] | None = None) -> A
 
     app = AppConfig()
     g = raw.get("global_settings") or {}
+    if not isinstance(g, dict):
+        raise ConfigError("global_settings はマップである必要があります")
     app.discord_webhook_url = str(g.get("discord_webhook_url", ""))
-    mn = {**DEFAULTS["misskey_notification"], **(g.get("misskey_notification") or {})}
-    app.misskey_notification = MisskeyNotificationConfig(
-        enabled=_to_bool(mn["enabled"]),
-        host=str(mn["host"]),
-        token=str(mn["token"]),
-        visibility=str(mn["visibility"]),
-        local_only=_to_bool(mn["local_only"]),
-    )
+    app.misskey_notification = _parse_misskey_notification(g.get("misskey_notification"))
     app.global_include_paths = _get_filters(g, "include_paths")
     app.global_exclude_paths = _get_filters(g, "exclude_paths")
     app.log_rotation = _deep_merge(DEFAULTS["log_rotation"], g.get("log_rotation") or {})
     app.theme = _deep_merge(DEFAULTS["theme"], g.get("theme") or {})
 
-    for raw_inst in raw.get("instances") or []:
-        inst = _load_instance(raw_inst)
+    instances_raw = raw.get("instances") or []
+    if not isinstance(instances_raw, list):
+        raise ConfigError("instances はリストである必要があります")
+    for raw_inst in instances_raw:
+        if not isinstance(raw_inst, dict) or "name" not in raw_inst:
+            raise ConfigError(f"instances の各要素は name を持つマップである必要があります: {raw_inst!r}")
+        inst = _load_instance(raw_inst, app.misskey_notification, app.discord_webhook_url)
         if not inst.enabled:
             continue  # 無効インスタンスは読み込むだけ保持
+        if inst.name in app.instances:
+            raise ConfigError(f"インスタンス名が重複しています: {inst.name}")
         inst.validate()
-        if inst.discord_webhook_url == "":
-            inst.discord_webhook_url = app.discord_webhook_url
         app.instances[inst.name] = inst
     return app
